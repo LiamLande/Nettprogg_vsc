@@ -12,6 +12,7 @@ describe("extension packaging", () => {
     const commands = packageJson.contributes.commands.map((command) => command.command);
 
     expect(commands).toContain("liveshareLite.startServer");
+    expect(commands).toContain("liveshareLite.startSignalingServer");
     expect(commands).toContain("liveshareLite.startSession");
     expect(commands).toContain("liveshareLite.joinSession");
     expect(commands).toContain("liveshareLite.leaveSession");

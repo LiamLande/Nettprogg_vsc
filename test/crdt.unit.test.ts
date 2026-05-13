@@ -97,4 +97,27 @@ describe("TextCrdt unit behavior", () => {
     expect(left.toString()).toBe("yx");
     expect(right.toString()).toBe("yx");
   });
+
+  it("hydrates snapshots with the joining replica id for future operations", () => {
+    const source = new TextCrdt("A");
+    source.insert(0, "abc");
+
+    const joined = TextCrdt.fromSnapshot(source.snapshot(), "B");
+    const [op] = joined.insert(joined.visibleLength(), "!");
+
+    expect(joined.getReplicaId()).toBe("B");
+    expect(op.opId).toEqual({ counter: 1, replicaId: "B" });
+    expect(joined.toString()).toBe("abc!");
+  });
+
+  it("keeps future operation ids unique when a snapshot already contains local replica ops", () => {
+    const source = new TextCrdt("A");
+    const bOp = new TextCrdt("B").insert(0, "b")[0];
+    source.applyOperation(bOp);
+
+    const joined = TextCrdt.fromSnapshot(source.snapshot(), "B");
+    const [nextOp] = joined.insert(joined.visibleLength(), "!");
+
+    expect(nextOp.opId).toEqual({ counter: 2, replicaId: "B" });
+  });
 });

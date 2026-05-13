@@ -14,6 +14,7 @@
   ],
   "activationEvents": [
     "onCommand:liveshareLite.startServer",
+    "onCommand:liveshareLite.startSignalingServer",
     "onCommand:liveshareLite.startSession",
     "onCommand:liveshareLite.joinSession",
     "onCommand:liveshareLite.leaveSession",
@@ -26,6 +27,10 @@
       {
         "command": "liveshareLite.startServer",
         "title": "LiveShare Lite: Start Server"
+      },
+      {
+        "command": "liveshareLite.startSignalingServer",
+        "title": "LiveShare Lite: Start Signaling Server"
       },
       {
         "command": "liveshareLite.startSession",
@@ -61,6 +66,35 @@
           "default": 7071,
           "description": "Default local relay server port."
         },
+        "liveshareLite.transportMode": {
+          "type": "string",
+          "enum": [
+            "relay",
+            "p2p"
+          ],
+          "default": "relay",
+          "description": "Transport mode. Relay uses the WebSocket operation relay; p2p uses WebRTC DataChannels with a signaling server."
+        },
+        "liveshareLite.signalingUrl": {
+          "type": "string",
+          "default": "ws://127.0.0.1:7072",
+          "description": "Default WebSocket signaling server URL for P2P mode."
+        },
+        "liveshareLite.signalingPort": {
+          "type": "number",
+          "default": 7072,
+          "description": "Default local signaling server port."
+        },
+        "liveshareLite.iceServers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "stun:stun.l.google.com:19302"
+          ],
+          "description": "ICE servers used by WebRTC P2P mode."
+        },
         "liveshareLite.reconnectDelayMs": {
           "type": "number",
           "default": 1500,
@@ -75,12 +109,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:crdt": "vitest run test/crdt.unit.test.ts test/crdt.convergence.test.ts test/crdt.randomized.test.ts",
-    "test:server": "vitest run test/server.test.ts",
+    "test:server": "vitest run test/server.test.ts test/signalingServer.test.ts",
     "test:extension-host": "npm run compile && node ./dist/test/runTest.js",
     "bench": "tsx scripts/benchmark.ts",
-    "start:server": "tsx src/server/cli.ts"
+    "start:server": "tsx src/server/cli.ts relay",
+    "start:signaling": "tsx src/server/cli.ts signaling"
   },
   "dependencies": {
+    "node-datachannel": "^0.32.3",
     "ws": "^8.18.0"
   },
   "devDependencies": {

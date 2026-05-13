@@ -8,3 +8,15 @@ export type {
   PresenceMessage,
   ServerMessage
 } from "../shared/messages";
+export type {
+  SignalingClientMessage,
+  SignalingErrorMessage,
+  SignalingJoinMessage,
+  SignalingJoinedMessage,
+  SignalingPeerInfo,
+  SignalingPeerJoinedMessage,
+  SignalingPeerLeftMessage,
+  SignalingServerMessage,
+  SignalingSignalMessage,
+  SignalingSignalPayload
+} from "../shared/signalingMessages";

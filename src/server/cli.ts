@@ -1,11 +1,16 @@
 import { RelayServer } from "./relayServer";
+import { SignalingServer } from "./signalingServer";
 
 async function main(): Promise<void> {
-  const port = Number(process.env.PORT ?? process.argv[2] ?? 7071);
-  const server = new RelayServer({ port, host: "127.0.0.1" });
+  const mode = process.argv[2] === "signaling" ? "signaling" : "relay";
+  const portArg = mode === "signaling" ? process.argv[3] : process.argv[3] ?? process.argv[2];
+  const defaultPort = mode === "signaling" ? 7072 : 7071;
+  const port = Number(process.env.PORT ?? portArg ?? defaultPort);
+  const host = process.env.HOST ?? "127.0.0.1";
+  const server = mode === "signaling" ? new SignalingServer({ port, host }) : new RelayServer({ port, host });
   const actualPort = await server.start();
 
-  console.log(`LiveShare Lite relay server listening on ws://127.0.0.1:${actualPort}`);
+  console.log(`LiveShare Lite ${mode} server listening on ws://${host}:${actualPort}`);
 
   const shutdown = async () => {
     await server.stop();

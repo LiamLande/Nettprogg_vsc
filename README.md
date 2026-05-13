@@ -16,6 +16,8 @@ Add the GitHub Actions badge after pushing this repository to GitHub:
 - CRDT-based synchronization of one active text document
 - Custom RGA-inspired text CRDT with tombstones and pending operation buffers
 - WebSocket relay server with rooms, operation replay and reconnect support
+- WebRTC peer-to-peer mesh transport for document operations, using a signaling server only for connection setup
+- Signaling server with room presence and directed WebRTC offer/answer/candidate forwarding
 - Duplicate, delayed and out-of-order operations are idempotent
 - Status bar connection state and participant count
 - Unit, convergence, randomized and relay server tests
@@ -25,6 +27,14 @@ Add the GitHub Actions badge after pushing this repository to GitHub:
 
 ```text
 VS Code extension ── CRDT operations ── WebSocket relay ── CRDT operations ── VS Code extension
+```
+
+P2P mode keeps document data off the server:
+
+```text
+VS Code extension ── WebRTC DataChannel CRDT operations ── VS Code extension
+        │                                                   │
+        └──── WebSocket signaling only: join, presence, ICE ┘
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the full flow.
@@ -65,6 +75,15 @@ npm run compile
 
 You can also run `LiveShare Lite: Start Server` from inside the extension host.
 
+### P2P Mode
+
+1. Start signaling: `npm run start:signaling`
+2. Set `liveshareLite.transportMode` to `p2p`.
+3. Use the same room ID and signaling URL on each client.
+4. The first peer seeds the document; later peers receive a CRDT snapshot from an existing peer over WebRTC.
+
+The signaling server does not store or relay document operations. For internet use, peers still need reachable signaling and usable ICE/STUN paths. TURN relay fallback is not included.
+
 ## Running Tests
 
 ```bash
@@ -86,6 +105,7 @@ The benchmark inserts documents of 100, 1,000 and 10,000 characters and prints e
 
 - `vscode` API types for the extension surface
 - `ws` for WebSocket transport
+- `node-datachannel` for WebRTC DataChannels in the VS Code extension host
 - `vitest` for tests
 - `fast-check` for randomized convergence tests
 - `typescript` and `tsx` for build scripts
@@ -97,6 +117,7 @@ No production CRDT library such as Yjs or Automerge is used. The CRDT is impleme
 - One active text file only
 - No authentication beyond room ID
 - No workspace/file tree sync
+- P2P mode needs a signaling server and does not include TURN fallback
 - No shared cursor rendering
 - No CRDT-aware undo/redo
 - Tombstones are not compacted

@@ -34,9 +34,9 @@ export class TextCrdt {
     this.children.set("ROOT", []);
   }
 
-  static fromSnapshot(snapshot: TextCrdtSnapshot): TextCrdt {
-    const crdt = new TextCrdt(snapshot.replicaId);
-    crdt.counter = snapshot.counter;
+  static fromSnapshot(snapshot: TextCrdtSnapshot, replicaId = snapshot.replicaId): TextCrdt {
+    const crdt = new TextCrdt(replicaId);
+    crdt.counter = maxCounterForReplica(snapshot, replicaId);
 
     for (const element of snapshot.elements) {
       crdt.elements.set(idKey(element.id), {
@@ -346,4 +346,35 @@ function cloneDeleteOp(op: DeleteOp): DeleteOp {
     opId: cloneElementId(op.opId),
     targetId: cloneElementId(op.targetId)
   };
+}
+
+function maxCounterForReplica(snapshot: TextCrdtSnapshot, replicaId: ReplicaId): number {
+  let max = snapshot.replicaId === replicaId ? snapshot.counter : 0;
+
+  for (const element of snapshot.elements) {
+    if (element.id.replicaId === replicaId) {
+      max = Math.max(max, element.id.counter);
+    }
+  }
+
+  for (const op of [...snapshot.pendingInserts, ...snapshot.pendingDeletes]) {
+    if (op.opId.replicaId === replicaId) {
+      max = Math.max(max, op.opId.counter);
+    }
+  }
+
+  for (const opId of snapshot.seenOpIds) {
+    const separator = opId.lastIndexOf(":");
+    if (separator <= 0) {
+      continue;
+    }
+
+    const seenReplicaId = opId.slice(0, separator);
+    const counter = Number(opId.slice(separator + 1));
+    if (seenReplicaId === replicaId && Number.isInteger(counter)) {
+      max = Math.max(max, counter);
+    }
+  }
+
+  return max;
 }
