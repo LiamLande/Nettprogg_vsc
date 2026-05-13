@@ -1,0 +1,96 @@
+{
+  "name": "liveshare-lite",
+  "displayName": "LiveShare Lite",
+  "description": "A proof-of-concept VS Code extension for CRDT-based collaborative text editing.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:liveshareLite.startServer",
+    "onCommand:liveshareLite.startSession",
+    "onCommand:liveshareLite.joinSession",
+    "onCommand:liveshareLite.leaveSession",
+    "onCommand:liveshareLite.showDebugState",
+    "onCommand:liveshareLite.runLocalDemo"
+  ],
+  "main": "./dist/extension/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "liveshareLite.startServer",
+        "title": "LiveShare Lite: Start Server"
+      },
+      {
+        "command": "liveshareLite.startSession",
+        "title": "LiveShare Lite: Start Session"
+      },
+      {
+        "command": "liveshareLite.joinSession",
+        "title": "LiveShare Lite: Join Session"
+      },
+      {
+        "command": "liveshareLite.leaveSession",
+        "title": "LiveShare Lite: Leave Session"
+      },
+      {
+        "command": "liveshareLite.showDebugState",
+        "title": "LiveShare Lite: Show Debug State"
+      },
+      {
+        "command": "liveshareLite.runLocalDemo",
+        "title": "LiveShare Lite: Run Local CRDT Demo"
+      }
+    ],
+    "configuration": {
+      "title": "LiveShare Lite",
+      "properties": {
+        "liveshareLite.serverUrl": {
+          "type": "string",
+          "default": "ws://127.0.0.1:7071",
+          "description": "Default WebSocket relay server URL."
+        },
+        "liveshareLite.serverPort": {
+          "type": "number",
+          "default": 7071,
+          "description": "Default local relay server port."
+        },
+        "liveshareLite.reconnectDelayMs": {
+          "type": "number",
+          "default": 1500,
+          "description": "Delay before reconnecting after a dropped relay connection."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:crdt": "vitest run test/crdt.unit.test.ts test/crdt.convergence.test.ts test/crdt.randomized.test.ts",
+    "test:server": "vitest run test/server.test.ts",
+    "test:extension-host": "npm run compile && node ./dist/test/runTest.js",
+    "bench": "tsx scripts/benchmark.ts",
+    "start:server": "tsx src/server/cli.ts"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.100.0",
+    "@types/ws": "^8.5.12",
+    "@vscode/test-electron": "^2.5.2",
+    "fast-check": "^3.23.2",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.6"
+  }
+}

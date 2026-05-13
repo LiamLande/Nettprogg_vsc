@@ -1,0 +1,10 @@
+src/**
+test/**
+docs/**
+scripts/**
+.github/**
+coverage/**
+.vscode-test/**
+vitest.config.ts
+tsconfig.json
+*.log
