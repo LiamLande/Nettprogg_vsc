@@ -16,6 +16,7 @@ describe("extension packaging", () => {
     expect(commands).toContain("liveshareLite.startSession");
     expect(commands).toContain("liveshareLite.joinSession");
     expect(commands).toContain("liveshareLite.leaveSession");
+    expect(commands).toContain("liveshareLite.forceShutdown");
     expect(commands).toContain("liveshareLite.showDebugState");
   });
 

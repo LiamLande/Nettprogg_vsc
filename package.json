@@ -18,6 +18,7 @@
     "onCommand:liveshareLite.startSession",
     "onCommand:liveshareLite.joinSession",
     "onCommand:liveshareLite.leaveSession",
+    "onCommand:liveshareLite.forceShutdown",
     "onCommand:liveshareLite.showDebugState",
     "onCommand:liveshareLite.runLocalDemo"
   ],
@@ -43,6 +44,10 @@
       {
         "command": "liveshareLite.leaveSession",
         "title": "LiveShare Lite: Leave Session"
+      },
+      {
+        "command": "liveshareLite.forceShutdown",
+        "title": "LiveShare Lite: Force Shutdown"
       },
       {
         "command": "liveshareLite.showDebugState",

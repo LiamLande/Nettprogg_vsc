@@ -197,6 +197,28 @@ export class SessionManager implements vscode.Disposable {
     }
   }
 
+  async forceShutdown(): Promise<void> {
+    this.output.appendLine("Force shutdown requested.");
+    await this.leaveSession(false);
+
+    const localServer = this.localServer;
+    const localServerKind = this.localServerKind;
+    this.localServer = undefined;
+    this.localServerKind = undefined;
+
+    if (localServer) {
+      try {
+        await localServer.stop();
+        this.output.appendLine(`Stopped local ${localServerKind ?? "LiveShare Lite"} server.`);
+      } catch (error) {
+        this.output.appendLine(error instanceof Error ? error.message : "Failed to stop local LiveShare Lite server.");
+      }
+    }
+
+    this.statusBar.setState("idle");
+    vscode.window.showInformationMessage("LiveShare Lite force shutdown complete.");
+  }
+
   showDebugState(): void {
     this.output.show();
     this.output.appendLine("=== LiveShare Lite Debug State ===");

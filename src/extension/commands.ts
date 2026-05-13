@@ -8,6 +8,7 @@ export function registerCommands(context: vscode.ExtensionContext, manager: Sess
     vscode.commands.registerCommand("liveshareLite.startSession", () => manager.startSession()),
     vscode.commands.registerCommand("liveshareLite.joinSession", () => manager.joinSession()),
     vscode.commands.registerCommand("liveshareLite.leaveSession", () => manager.leaveSession()),
+    vscode.commands.registerCommand("liveshareLite.forceShutdown", () => manager.forceShutdown()),
     vscode.commands.registerCommand("liveshareLite.showDebugState", () => manager.showDebugState()),
     vscode.commands.registerCommand("liveshareLite.runLocalDemo", () => manager.runLocalDemo())
   );

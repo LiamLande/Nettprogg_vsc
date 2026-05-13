@@ -13,6 +13,7 @@ export async function run(): Promise<void> {
     "liveshareLite.startSession",
     "liveshareLite.joinSession",
     "liveshareLite.leaveSession",
+    "liveshareLite.forceShutdown",
     "liveshareLite.showDebugState",
     "liveshareLite.runLocalDemo"
   ]) {
