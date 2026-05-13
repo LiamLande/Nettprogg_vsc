@@ -206,6 +206,8 @@ export class SessionManager implements vscode.Disposable {
           pendingRemoteOperations: this.pendingRemoteOperations.length,
           pendingSnapshotRequests: this.pendingSnapshotRequests.size,
           snapshotProviderPeerId: this.snapshotProviderPeerId,
+          snapshotRequested: this.snapshotRequested,
+          connectedPeerIds: this.transport?.connectedPeerIds?.() ?? [],
           crdt: this.crdt?.debugState()
         },
         null,
@@ -402,7 +404,8 @@ export class SessionManager implements vscode.Disposable {
       return;
     }
 
-    this.transport?.sendSnapshot?.(clientId, this.crdt.snapshot());
+    const sent = this.transport?.sendSnapshot?.(clientId, this.crdt.snapshot()) ?? false;
+    this.output.appendLine(`P2P snapshot ${sent ? "queued" : "failed"} for ${clientId}.`);
   }
 
   private async handleSnapshot(event: TransportSnapshotEvent): Promise<void> {
@@ -552,6 +555,7 @@ export class SessionManager implements vscode.Disposable {
     const requested = this.transport?.requestSnapshot?.(this.snapshotProviderPeerId) ?? false;
     if (requested) {
       this.snapshotRequested = true;
+      this.output.appendLine(`Requested P2P snapshot from ${this.snapshotProviderPeerId ?? "peer"}.`);
     }
   }
 

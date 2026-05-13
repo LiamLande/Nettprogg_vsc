@@ -9,8 +9,14 @@ import {
   SignalingSignalPayload,
   isSignalingServerMessage
 } from "../shared/signalingMessages";
-import { isP2PDataMessage, P2PDataMessage } from "./p2pDataMessages";
+import { isP2PDataMessage, type P2PDataMessage, type P2PSnapshotChunkMessage } from "./p2pDataMessages";
 import { CollaborationTransport, TransportHandlers } from "./types";
+
+const SNAPSHOT_CHUNK_SIZE = 16 * 1024;
+const SNAPSHOT_CHUNK_TTL_MS = 60_000;
+const DATA_CHANNEL_BUFFER_LOW_THRESHOLD = SNAPSHOT_CHUNK_SIZE * 4;
+const DATA_CHANNEL_BUFFER_HIGH_WATERMARK = SNAPSHOT_CHUNK_SIZE * 16;
+const QUEUE_FLUSH_DELAY_MS = 10;
 
 export type P2PMeshTransportOptions = {
   signalingUrl: string;
@@ -31,15 +37,26 @@ type MeshPeer = {
   peerConnection: PeerConnection;
   dataChannel?: DataChannel;
   channelOpen: boolean;
+  flushTimer?: NodeJS.Timeout;
   queuedMessages: P2PDataMessage[];
   pendingCandidates: RemoteCandidate[];
 };
+
+type SnapshotChunkBuffer = {
+  chunks: Array<string | undefined>;
+  createdAt: number;
+  received: number;
+  total: number;
+};
+
+type SendAttemptResult = "sent" | "retry" | "failed";
 
 export class P2PMeshTransport implements CollaborationTransport {
   private signalingSocket?: WebSocket;
   private disposed = false;
   private readonly roomPeers = new Map<string, SignalingPeerInfo>();
   private readonly meshPeers = new Map<string, MeshPeer>();
+  private readonly snapshotChunks = new Map<string, SnapshotChunkBuffer>();
 
   constructor(private readonly options: P2PMeshTransportOptions) {}
 
@@ -87,12 +104,14 @@ export class P2PMeshTransport implements CollaborationTransport {
     this.signalingSocket = undefined;
 
     for (const peer of this.meshPeers.values()) {
+      this.clearPeerFlushTimer(peer);
       peer.dataChannel?.close();
       peer.peerConnection.close();
     }
 
     this.meshPeers.clear();
     this.roomPeers.clear();
+    this.snapshotChunks.clear();
   }
 
   sendOperation(operation: CrdtOperation, exceptClientId?: string): boolean {
@@ -124,11 +143,38 @@ export class P2PMeshTransport implements CollaborationTransport {
   }
 
   sendSnapshot(clientId: string, snapshot: TextCrdtSnapshot): boolean {
-    return this.sendDataMessage(clientId, {
-      type: "snapshot",
-      clientId: this.options.clientId,
-      snapshot
-    });
+    const snapshotJson = JSON.stringify(snapshot);
+    if (Buffer.byteLength(snapshotJson, "utf8") <= SNAPSHOT_CHUNK_SIZE) {
+      return this.sendDataMessage(clientId, {
+        type: "snapshot",
+        clientId: this.options.clientId,
+        snapshot
+      });
+    }
+
+    const encoded = Buffer.from(snapshotJson, "utf8").toString("base64");
+    const snapshotId = `${this.options.clientId}:${Date.now()}:${Math.random().toString(16).slice(2)}`;
+    const total = Math.ceil(encoded.length / SNAPSHOT_CHUNK_SIZE);
+    this.options.handlers.log?.(`Sending P2P snapshot to ${clientId} in ${total} chunks.`);
+
+    let sent = true;
+    for (let index = 0; index < total; index += 1) {
+      sent =
+        this.sendDataMessage(clientId, {
+          type: "snapshot-chunk",
+          clientId: this.options.clientId,
+          snapshotId,
+          index,
+          total,
+          chunk: encoded.slice(index * SNAPSHOT_CHUNK_SIZE, (index + 1) * SNAPSHOT_CHUNK_SIZE)
+        }) && sent;
+    }
+
+    if (!sent) {
+      this.options.handlers.onError?.(`Failed to send complete P2P snapshot to ${clientId}.`);
+    }
+
+    return sent;
   }
 
   connectedPeerIds(): string[] {
@@ -255,6 +301,7 @@ export class P2PMeshTransport implements CollaborationTransport {
       return;
     }
 
+    this.clearPeerFlushTimer(peer);
     peer.dataChannel?.close();
     peer.peerConnection.close();
     this.meshPeers.delete(clientId);
@@ -262,6 +309,7 @@ export class P2PMeshTransport implements CollaborationTransport {
 
   private attachDataChannel(peer: MeshPeer, channel: DataChannel): void {
     peer.dataChannel = channel;
+    channel.setBufferedAmountLowThreshold(DATA_CHANNEL_BUFFER_LOW_THRESHOLD);
 
     const markOpen = () => {
       peer.channelOpen = true;
@@ -276,9 +324,13 @@ export class P2PMeshTransport implements CollaborationTransport {
     channel.onOpen(markOpen);
     channel.onClosed(() => {
       peer.channelOpen = false;
+      this.clearPeerFlushTimer(peer);
     });
     channel.onError((error) => {
       this.options.handlers.onError?.(`P2P peer ${peer.clientId}: ${error}`);
+    });
+    channel.onBufferedAmountLow(() => {
+      this.flushPeerQueue(peer);
     });
     channel.onMessage((raw) => {
       void this.handleDataMessage(peer.clientId, raw);
@@ -327,10 +379,64 @@ export class P2PMeshTransport implements CollaborationTransport {
       return;
     }
 
+    if (parsed.type === "snapshot-chunk") {
+      await this.handleSnapshotChunk(peerId, parsed);
+      return;
+    }
+
     await this.options.handlers.onSnapshot?.({
       snapshot: parsed.snapshot,
       sourceClientId: peerId
     });
+  }
+
+  private async handleSnapshotChunk(peerId: string, message: P2PSnapshotChunkMessage): Promise<void> {
+    this.cleanupSnapshotChunks();
+
+    const key = `${peerId}:${message.snapshotId}`;
+    let buffer = this.snapshotChunks.get(key);
+    if (!buffer || buffer.total !== message.total) {
+      buffer = {
+        chunks: new Array<string | undefined>(message.total),
+        createdAt: Date.now(),
+        received: 0,
+        total: message.total
+      };
+      this.snapshotChunks.set(key, buffer);
+    }
+
+    if (buffer.chunks[message.index] === undefined) {
+      buffer.received += 1;
+    }
+    buffer.chunks[message.index] = message.chunk;
+
+    if (buffer.received < buffer.total) {
+      return;
+    }
+
+    this.snapshotChunks.delete(key);
+
+    try {
+      const encoded = buffer.chunks.join("");
+      const snapshot = JSON.parse(Buffer.from(encoded, "base64").toString("utf8")) as TextCrdtSnapshot;
+      await this.options.handlers.onSnapshot?.({
+        snapshot,
+        sourceClientId: peerId
+      });
+    } catch (error) {
+      this.options.handlers.onError?.(
+        error instanceof Error ? error.message : `Failed to decode P2P snapshot from ${peerId}.`
+      );
+    }
+  }
+
+  private cleanupSnapshotChunks(): void {
+    const cutoff = Date.now() - SNAPSHOT_CHUNK_TTL_MS;
+    for (const [key, buffer] of this.snapshotChunks) {
+      if (buffer.createdAt < cutoff) {
+        this.snapshotChunks.delete(key);
+      }
+    }
   }
 
   private applySignal(peer: MeshPeer, signal: SignalingSignalPayload): void {
@@ -402,15 +508,91 @@ export class P2PMeshTransport implements CollaborationTransport {
       return true;
     }
 
-    return peer.dataChannel.sendMessage(JSON.stringify(message));
+    if (peer.queuedMessages.length > 0) {
+      peer.queuedMessages.push(message);
+      this.flushPeerQueue(peer);
+      return true;
+    }
+
+    const result = this.trySendDataMessage(peer, message);
+    if (result === "sent") {
+      return true;
+    }
+
+    if (result === "retry") {
+      peer.queuedMessages.push(message);
+      this.schedulePeerQueueFlush(peer);
+      return true;
+    }
+
+    return false;
   }
 
   private flushPeerQueue(peer: MeshPeer): void {
-    const queued = peer.queuedMessages;
-    peer.queuedMessages = [];
-    for (const message of queued) {
-      this.sendDataMessage(peer.clientId, message);
+    this.clearPeerFlushTimer(peer);
+    if (!peer.channelOpen || !peer.dataChannel?.isOpen()) {
+      return;
     }
+
+    while (peer.queuedMessages.length > 0) {
+      const message = peer.queuedMessages.shift();
+      if (!message) {
+        return;
+      }
+
+      const result = this.trySendDataMessage(peer, message);
+      if (result === "retry") {
+        peer.queuedMessages.unshift(message);
+        this.schedulePeerQueueFlush(peer);
+        return;
+      }
+
+      if (result === "failed") {
+        continue;
+      }
+
+      if ((peer.dataChannel?.bufferedAmount() ?? 0) >= DATA_CHANNEL_BUFFER_HIGH_WATERMARK) {
+        this.schedulePeerQueueFlush(peer);
+        return;
+      }
+    }
+  }
+
+  private trySendDataMessage(peer: MeshPeer, message: P2PDataMessage): SendAttemptResult {
+    if (!peer.channelOpen || !peer.dataChannel?.isOpen()) {
+      return "retry";
+    }
+
+    const payload = JSON.stringify(message);
+    const maxMessageSize = peer.dataChannel.maxMessageSize();
+    if (maxMessageSize > 0 && Buffer.byteLength(payload, "utf8") > maxMessageSize) {
+      this.options.handlers.onError?.(
+        `P2P ${message.type} message for ${peer.clientId} is larger than the data channel limit.`
+      );
+      return "failed";
+    }
+
+    return peer.dataChannel.sendMessage(payload) ? "sent" : "retry";
+  }
+
+  private schedulePeerQueueFlush(peer: MeshPeer): void {
+    if (peer.flushTimer) {
+      return;
+    }
+
+    peer.flushTimer = setTimeout(() => {
+      peer.flushTimer = undefined;
+      this.flushPeerQueue(peer);
+    }, QUEUE_FLUSH_DELAY_MS);
+  }
+
+  private clearPeerFlushTimer(peer: MeshPeer): void {
+    if (!peer.flushTimer) {
+      return;
+    }
+
+    clearTimeout(peer.flushTimer);
+    peer.flushTimer = undefined;
   }
 
   private rtcConfig(): RtcConfig {

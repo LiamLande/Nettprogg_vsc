@@ -60,6 +60,23 @@ describe("P2PMeshTransport", () => {
     expect(sameText(a, c)).toBe(true);
   });
 
+  it("transfers large snapshots to late joiners in chunks", async () => {
+    server = new SignalingServer({ port: 0, host: "127.0.0.1" });
+    const port = await server.start();
+    const signalingUrl = `ws://127.0.0.1:${port}`;
+    const largeText = "large snapshot\n".repeat(500);
+
+    const a = addClient(new MeshClient("A", signalingUrl, largeText));
+    a.connect();
+    await waitFor(() => a.syncReady && a.text() === largeText);
+
+    const b = addClient(new MeshClient("B", signalingUrl));
+    b.connect();
+    await waitFor(() => b.syncReady && b.text() === largeText, 10_000);
+
+    expect(b.text()).toBe(largeText);
+  });
+
   function addClient(client: MeshClient): MeshClient {
     clients.push(client);
     return client;
