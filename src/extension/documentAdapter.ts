@@ -28,6 +28,23 @@ export function changesToOperations(
   return operations;
 }
 
+export function applyTextChanges(text: string, changes: readonly TextDocumentContentChangeLike[]): string {
+  let nextText = text;
+  const sorted = [...changes].sort((a, b) => b.rangeOffset - a.rangeOffset);
+
+  for (const change of sorted) {
+    const start = change.rangeOffset;
+    const end = change.rangeOffset + change.rangeLength;
+    if (start < 0 || end < start || end > nextText.length) {
+      throw new RangeError(`Change range ${start}:${change.rangeLength} is outside document length ${nextText.length}.`);
+    }
+
+    nextText = `${nextText.slice(0, start)}${change.text}${nextText.slice(end)}`;
+  }
+
+  return nextText;
+}
+
 export async function replaceDocumentText(
   vscodeApi: typeof vscode,
   document: vscode.TextDocument,

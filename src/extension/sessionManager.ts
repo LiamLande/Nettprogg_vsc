@@ -14,7 +14,7 @@ import {
   TransportOperationEvent,
   TransportSnapshotEvent
 } from "../transport/types";
-import { changesToOperations, replaceDocumentText } from "./documentAdapter";
+import { applyTextChanges, changesToOperations, replaceDocumentText } from "./documentAdapter";
 import { StatusBarController } from "./statusBar";
 
 type SessionConfig = {
@@ -42,11 +42,14 @@ export class SessionManager implements vscode.Disposable {
   private transport?: CollaborationTransport;
   private crdt?: TextCrdt;
   private session?: SessionConfig;
-  private applyingRemoteChange = false;
+  private applyingRemoteChangeDepth = 0;
   private connected = false;
   private syncReady = false;
   private seedSent = false;
   private reconnectTimer?: NodeJS.Timeout;
+  private renderQueue: Promise<void> = Promise.resolve();
+  private documentShadowText = "";
+  private sessionVersion = 0;
   private offlineQueue: CrdtOperation[] = [];
   private pendingRemoteOperations: TransportOperationEvent[] = [];
   private pendingSnapshotRequests = new Set<string>();
@@ -164,6 +167,7 @@ export class SessionManager implements vscode.Disposable {
 
   async leaveSession(showMessage = true): Promise<void> {
     this.clearReconnectTimer();
+    this.sessionVersion += 1;
     this.localChangeSubscription?.dispose();
     this.localChangeSubscription = undefined;
 
@@ -175,6 +179,9 @@ export class SessionManager implements vscode.Disposable {
     this.syncReady = false;
     this.session = undefined;
     this.crdt = undefined;
+    this.applyingRemoteChangeDepth = 0;
+    this.renderQueue = Promise.resolve();
+    this.documentShadowText = "";
     this.offlineQueue = [];
     this.pendingRemoteOperations = [];
     this.pendingSnapshotRequests.clear();
@@ -242,8 +249,10 @@ export class SessionManager implements vscode.Disposable {
   private async connect(config: SessionConfig): Promise<void> {
     await this.leaveSession(false);
 
+    this.sessionVersion += 1;
     this.session = config;
     this.crdt = new TextCrdt(this.clientId);
+    this.documentShadowText = config.document.getText();
     this.statusBar.setState("syncing", config.roomId);
     this.localChangeSubscription = vscode.workspace.onDidChangeTextDocument((event) => {
       void this.handleLocalDocumentChange(event);
@@ -447,7 +456,7 @@ export class SessionManager implements vscode.Disposable {
   }
 
   private async handleLocalDocumentChange(event: vscode.TextDocumentChangeEvent): Promise<void> {
-    if (!this.session || !this.crdt || this.applyingRemoteChange) {
+    if (!this.session || !this.crdt || this.applyingRemoteChangeDepth > 0) {
       return;
     }
 
@@ -465,10 +474,30 @@ export class SessionManager implements vscode.Disposable {
     }
 
     try {
+      const crdtText = this.crdt.toString();
+      if (this.documentShadowText !== crdtText) {
+        this.output.appendLine("Local edit skipped while remote changes are rendering.");
+        void this.renderCrdtToDocument();
+        return;
+      }
+
+      const nextShadowText = applyTextChanges(this.documentShadowText, event.contentChanges);
+      if (nextShadowText !== event.document.getText()) {
+        this.output.appendLine("Local edit skipped because VS Code change ranges did not match the document shadow.");
+        void this.renderCrdtToDocument();
+        return;
+      }
+
       const operations = changesToOperations(event.contentChanges, this.crdt);
+      this.documentShadowText = nextShadowText;
       for (const op of operations) {
         this.output.appendLine(`local ${op.type} ${JSON.stringify(op.opId)}`);
         this.sendOperation(op);
+      }
+
+      if (this.crdt.toString() !== this.documentShadowText) {
+        this.output.appendLine("Local CRDT text diverged from the editor after applying local changes; re-rendering.");
+        void this.renderCrdtToDocument();
       }
     } catch (error) {
       this.output.appendLine(error instanceof Error ? error.message : "Failed to translate local document change.");
@@ -481,17 +510,39 @@ export class SessionManager implements vscode.Disposable {
       return;
     }
 
-    const nextText = this.crdt.toString();
-    if (this.session.document.getText() === nextText) {
-      return;
-    }
+    const version = this.sessionVersion;
+    const documentUri = this.session.document.uri.toString();
+    const render = async () => {
+      if (!this.session || !this.crdt || this.sessionVersion !== version) {
+        return;
+      }
 
-    this.applyingRemoteChange = true;
-    try {
-      await replaceDocumentText(vscode, this.session.document, nextText);
-    } finally {
-      this.applyingRemoteChange = false;
-    }
+      if (this.session.document.uri.toString() !== documentUri) {
+        return;
+      }
+
+      const nextText = this.crdt.toString();
+      if (this.session.document.getText() === nextText) {
+        this.documentShadowText = nextText;
+        return;
+      }
+
+      this.applyingRemoteChangeDepth += 1;
+      try {
+        const applied = await replaceDocumentText(vscode, this.session.document, nextText);
+        if (applied && this.sessionVersion === version) {
+          this.documentShadowText = nextText;
+        }
+      } finally {
+        this.applyingRemoteChangeDepth = Math.max(0, this.applyingRemoteChangeDepth - 1);
+      }
+    };
+
+    const nextRender = this.renderQueue.catch(() => undefined).then(render);
+    this.renderQueue = nextRender.catch((error) => {
+      this.output.appendLine(error instanceof Error ? error.message : "Failed to render CRDT text.");
+    });
+    await nextRender;
   }
 
   private seedCrdtFromDocument(): void {
