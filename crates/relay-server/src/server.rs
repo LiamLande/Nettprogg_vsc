@@ -157,6 +157,14 @@ async fn handle_connection(stream: TcpStream, rooms: SharedRooms) -> anyhow::Res
 
                 let mut guard = rooms.lock().await;
                 if let Some(room) = guard.get_mut(&room_id) {
+                    // Ensure this connection is still the active one for client_id.
+                    if !room.is_active_sender(&client_id, &tx_outbound) {
+                        let _ = tx_outbound.send(ServerMessage::Error {
+                            message: "stale connection replaced by a newer session".into(),
+                        });
+                        continue;
+                    }
+
                     let is_new = room.append_operation(op.clone());
                     if is_new {
                         let broadcast = ServerMessage::Operation {

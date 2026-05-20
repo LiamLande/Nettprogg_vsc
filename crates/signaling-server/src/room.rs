@@ -87,6 +87,15 @@ impl SignalingRoom {
         }
     }
 
+    /// Check whether `sender` refers to the currently registered connection
+    /// for `client_id`.
+    pub fn is_active_sender(&self, client_id: &str, sender: &UnboundedSender<SignalingServerMessage>) -> bool {
+        self.peers
+            .get(client_id)
+            .map(|peer| peer.sender.same_channel(sender))
+            .unwrap_or(false)
+    }
+
     pub fn broadcast_except(&self, except: &str, message: &SignalingServerMessage) {
         for (client_id, peer) in &self.peers {
             if client_id == except {

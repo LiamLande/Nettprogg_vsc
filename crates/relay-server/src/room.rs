@@ -104,6 +104,15 @@ impl Room {
             None => false,
         }
     }
+
+    /// Check whether `sender` refers to the currently registered connection
+    /// for `client_id`.
+    pub fn is_active_sender(&self, client_id: &str, sender: &UnboundedSender<ServerMessage>) -> bool {
+        self.peers
+            .get(client_id)
+            .map(|peer| peer.sender.same_channel(sender))
+            .unwrap_or(false)
+    }
 }
 
 pub fn now_millis() -> u64 {

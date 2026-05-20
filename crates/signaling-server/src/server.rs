@@ -154,6 +154,14 @@ async fn handle_connection(stream: TcpStream, rooms: SharedRooms) -> anyhow::Res
 
                 let mut guard = rooms.lock().await;
                 if let Some(room) = guard.get_mut(&room_id) {
+                    // Reject signals from stale connections that were replaced by a newer session.
+                    if !room.is_active_sender(&client_id, &tx_outbound) {
+                        let _ = tx_outbound.send(SignalingServerMessage::Error {
+                            message: "stale connection replaced by a newer session".into(),
+                        });
+                        continue;
+                    }
+
                     let payload = SignalingServerMessage::Signal {
                         room_id: room_id.clone(),
                         client_id: client_id.clone(),
