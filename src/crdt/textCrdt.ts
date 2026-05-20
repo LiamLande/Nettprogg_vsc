@@ -72,9 +72,11 @@ function loadWasmModule(): WasmModule {
   }
 
   const candidates = [
+    // Prefer a bundled `dist/wasm/crdt` when running from a packaged layout,
+    // fall back to the source paths for local development.
+    path.resolve(__dirname, "../../dist/wasm/crdt"),
     "../wasm/crdt",
-    path.resolve(__dirname, "../../src/wasm/crdt"),
-    path.resolve(__dirname, "../../dist/wasm/crdt")
+    path.resolve(__dirname, "../../src/wasm/crdt")
   ];
   const errors: string[] = [];
 

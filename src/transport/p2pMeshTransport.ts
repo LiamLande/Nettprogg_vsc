@@ -624,20 +624,6 @@ export class P2PMeshTransport implements CollaborationTransport {
   }
 }
 
-function isLikelyRelayServerMessage(value: unknown): boolean {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const candidate = value as { type?: string; opLog?: unknown };
-  if (candidate.type === "presence" || candidate.type === "operation") {
-    return true;
-  }
-
-  return candidate.type === "joined" && Array.isArray(candidate.opLog);
-}
-USH_DELAY_MS);
-  }
 
   private clearPeerFlushTimer(peer: MeshPeer): void {
     if (!peer.flushTimer) {

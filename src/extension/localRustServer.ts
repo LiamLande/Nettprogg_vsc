@@ -127,9 +127,29 @@ export class LocalRustServer {
       return;
     }
     return new Promise((resolve) => {
-      const finish = () => resolve();
+      // If the child has already exited, resolve immediately.
+      if (child.exitCode != null || child.killed) {
+        resolve();
+        return;
+      }
+
+      // Track resolution and provide a safety timeout in case signals don't trigger.
+      const resolvedRef = { resolved: false } as { resolved: boolean };
+      const timeout = setTimeout(() => {
+        finish();
+      }, 2000);
+
+      const finish = () => {
+        if (!resolvedRef.resolved) {
+          resolvedRef.resolved = true;
+          clearTimeout(timeout);
+          resolve();
+        }
+      };
+
       child.once("exit", finish);
       child.once("close", finish);
+
       try {
         if (process.platform === "win32") {
           child.kill("SIGTERM");

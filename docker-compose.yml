@@ -23,8 +23,12 @@ services:
     restart: unless-stopped
     healthcheck:
       # The relay starts accepting WebSocket connections as soon as TCP
-      # bind succeeds. A simple connect-and-close check is enough.
-      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/7071 && echo ok"]
+      # bind succeeds. Use a portable probe: try python3/python, then nc.
+      test: ["CMD-SHELL", "python3 -c \"import socket,sys; s=socket.socket(); s.settimeout(1);\
+        try: s.connect(('127.0.0.1',7071)); s.close();\
+        except Exception: sys.exit(1)\" || python -c \"import socket,sys; s=socket.socket(); s.settimeout(1);\
+        try: s.connect(('127.0.0.1',7071)); s.close();\
+        except Exception: sys.exit(1)\" || nc -z 127.0.0.1 7071 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -45,7 +49,11 @@ services:
       - "7072:7072"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/7072 && echo ok"]
+      test: ["CMD-SHELL", "python3 -c \"import socket,sys; s=socket.socket(); s.settimeout(1);\
+        try: s.connect(('127.0.0.1',7072)); s.close();\
+        except Exception: sys.exit(1)\" || python -c \"import socket,sys; s=socket.socket(); s.settimeout(1);\
+        try: s.connect(('127.0.0.1',7072)); s.close();\
+        except Exception: sys.exit(1)\" || nc -z 127.0.0.1 7072 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
