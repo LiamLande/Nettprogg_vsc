@@ -3,8 +3,6 @@ import * as os from "node:os";
 import * as vscode from "vscode";
 import { TextCrdt } from "../crdt/textCrdt";
 import { CrdtOperation } from "../crdt/types";
-import { RelayServer } from "../server/relayServer";
-import { SignalingServer } from "../server/signalingServer";
 import { P2PMeshTransport } from "../transport/p2pMeshTransport";
 import { RelayTransport } from "../transport/relayTransport";
 import {
@@ -15,6 +13,7 @@ import {
   TransportSnapshotEvent
 } from "../transport/types";
 import { applyTextChanges, changesToOperations, replaceDocumentText } from "./documentAdapter";
+import { LocalRustServer, LocalRustServerKind } from "./localRustServer";
 import { StatusBarController } from "./statusBar";
 
 type SessionConfig = {
@@ -25,20 +24,14 @@ type SessionConfig = {
   seedText: string;
 };
 
-type LocalServer = {
-  start(): Promise<number>;
-  port(): number;
-  stop(): Promise<void>;
-};
-
 export class SessionManager implements vscode.Disposable {
   private readonly clientId = `${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
   private readonly statusBar = new StatusBarController();
   private readonly output = vscode.window.createOutputChannel("LiveShare Lite");
   private readonly disposables: vscode.Disposable[] = [];
   private localChangeSubscription?: vscode.Disposable;
-  private localServer?: LocalServer;
-  private localServerKind?: "relay" | "signaling";
+  private localServer?: LocalRustServer;
+  private localServerKind?: LocalRustServerKind;
   private transport?: CollaborationTransport;
   private crdt?: TextCrdt;
   private session?: SessionConfig;
@@ -64,31 +57,14 @@ export class SessionManager implements vscode.Disposable {
   }
 
   async startServer(): Promise<void> {
-    if (this.localServer) {
-      vscode.window.showInformationMessage(
-        `LiveShare Lite ${this.localServerKind} server already running on port ${this.localServer.port()}.`
-      );
-      return;
-    }
-
-    const configuredPort = vscode.workspace.getConfiguration("liveshareLite").get<number>("serverPort", 7071);
-    const input = await vscode.window.showInputBox({
-      title: "LiveShare Lite relay port",
-      value: String(configuredPort),
-      validateInput: (value) => (Number.isInteger(Number(value)) ? undefined : "Port must be a number.")
-    });
-
-    if (!input) {
-      return;
-    }
-
-    this.localServer = new RelayServer({ port: Number(input), host: "127.0.0.1" });
-    this.localServerKind = "relay";
-    const port = await this.localServer.start();
-    vscode.window.showInformationMessage(`LiveShare Lite relay server started on ws://127.0.0.1:${port}`);
+    await this.startLocalRustServer("relay");
   }
 
   async startSignalingServer(): Promise<void> {
+    await this.startLocalRustServer("signaling");
+  }
+
+  private async startLocalRustServer(kind: LocalRustServerKind): Promise<void> {
     if (this.localServer) {
       vscode.window.showInformationMessage(
         `LiveShare Lite ${this.localServerKind} server already running on port ${this.localServer.port()}.`
@@ -96,21 +72,48 @@ export class SessionManager implements vscode.Disposable {
       return;
     }
 
-    const configuredPort = vscode.workspace.getConfiguration("liveshareLite").get<number>("signalingPort", 7072);
+    const configKey = kind === "signaling" ? "signalingPort" : "serverPort";
+    const defaultPort = kind === "signaling" ? 7072 : 7071;
+    const configuredPort = vscode.workspace
+      .getConfiguration("liveshareLite")
+      .get<number>(configKey, defaultPort);
     const input = await vscode.window.showInputBox({
-      title: "LiveShare Lite signaling port",
+      title: `LiveShare Lite ${kind} port`,
       value: String(configuredPort),
-      validateInput: (value) => (Number.isInteger(Number(value)) ? undefined : "Port must be a number.")
+      validateInput: (value) =>
+        Number.isInteger(Number(value)) ? undefined : "Port must be a number."
     });
 
     if (!input) {
       return;
     }
 
-    this.localServer = new SignalingServer({ port: Number(input), host: "127.0.0.1" });
-    this.localServerKind = "signaling";
-    const port = await this.localServer.start();
-    vscode.window.showInformationMessage(`LiveShare Lite signaling server started on ws://127.0.0.1:${port}`);
+    const projectRoot = this.context.extensionPath;
+    const server = new LocalRustServer({
+      kind,
+      port: Number(input),
+      host: "127.0.0.1",
+      projectRoot,
+      log: (message) => this.output.appendLine(message)
+    });
+
+    try {
+      const port = await server.start();
+      this.localServer = server;
+      this.localServerKind = kind;
+      vscode.window.showInformationMessage(
+        `LiveShare Lite ${kind} server started on ws://127.0.0.1:${port}`
+      );
+    } catch (error) {
+      await server.stop();
+      const reason = error instanceof Error ? error.message : String(error);
+      this.output.appendLine(`Failed to start ${kind} server: ${reason}`);
+      vscode.window.showErrorMessage(
+        `LiveShare Lite ${kind} server failed to start. ` +
+          "Build the Rust workspace with `npm run rust:release` or install Rust toolchain so that `cargo run` works. " +
+          `Details: ${reason}`
+      );
+    }
   }
 
   async startSession(): Promise<void> {

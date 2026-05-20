@@ -18,6 +18,20 @@ const DATA_CHANNEL_BUFFER_LOW_THRESHOLD = SNAPSHOT_CHUNK_SIZE * 4;
 const DATA_CHANNEL_BUFFER_HIGH_WATERMARK = SNAPSHOT_CHUNK_SIZE * 16;
 const QUEUE_FLUSH_DELAY_MS = 10;
 
+/**
+ * Detects messages that only the relay server emits. Used to give a clear
+ * error if the user accidentally points the P2P transport at the relay URL.
+ * The relay's `joined` payload always carries `opLog`; the signaling server
+ * never includes that field.
+ */
+function isLikelyRelayServerMessage(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as { type?: unknown; opLog?: unknown };
+  return candidate.type === "joined" && Array.isArray(candidate.opLog);
+}
+
 export type P2PMeshTransportOptions = {
   signalingUrl: string;
   roomId: string;
@@ -76,6 +90,14 @@ export class P2PMeshTransport implements CollaborationTransport {
     socket.on("message", (raw) => {
       try {
         const parsed = JSON.parse(raw.toString()) as unknown;
+        if (isLikelyRelayServerMessage(parsed)) {
+          this.options.handlers.onError?.(
+            "P2P mode is connected to a relay server endpoint. Start the signaling server and use its URL (default ws://127.0.0.1:7072)."
+          );
+          socket.close();
+          return;
+        }
+
         if (!isSignalingServerMessage(parsed)) {
           this.options.handlers.onError?.("Invalid signaling message.");
           return;
@@ -573,6 +595,66 @@ export class P2PMeshTransport implements CollaborationTransport {
     }
 
     return peer.dataChannel.sendMessage(payload) ? "sent" : "retry";
+  }
+
+  private schedulePeerQueueFlush(peer: MeshPeer): void {
+    if (peer.flushTimer) {
+      return;
+    }
+
+    peer.flushTimer = setTimeout(() => {
+      peer.flushTimer = undefined;
+      this.flushPeerQueue(peer);
+    }, QUEUE_FLUSH_DELAY_MS);
+  }
+
+  private clearPeerFlushTimer(peer: MeshPeer): void {
+    if (!peer.flushTimer) {
+      return;
+    }
+
+    clearTimeout(peer.flushTimer);
+    peer.flushTimer = undefined;
+  }
+
+  private rtcConfig(): RtcConfig {
+    return {
+      iceServers: this.options.iceServers
+    };
+  }
+}
+
+function isLikelyRelayServerMessage(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as { type?: string; opLog?: unknown };
+  if (candidate.type === "presence" || candidate.type === "operation") {
+    return true;
+  }
+
+  return candidate.type === "joined" && Array.isArray(candidate.opLog);
+}
+USH_DELAY_MS);
+  }
+
+  private clearPeerFlushTimer(peer: MeshPeer): void {
+    if (!peer.flushTimer) {
+      return;
+    }
+
+    clearTimeout(peer.flushTimer);
+    peer.flushTimer = undefined;
+  }
+
+  private rtcConfig(): RtcConfig {
+    return {
+      iceServers: this.options.iceServers
+    };
+  }
+}
+ry";
   }
 
   private schedulePeerQueueFlush(peer: MeshPeer): void {
