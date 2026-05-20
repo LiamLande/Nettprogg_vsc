@@ -124,7 +124,7 @@
     "rust:clippy": "cargo clippy --manifest-path crates/Cargo.toml --all-targets -- -D warnings",
     "rust:start:relay": "cargo run --release --manifest-path crates/Cargo.toml --bin relay-server",
     "rust:start:signaling": "cargo run --release --manifest-path crates/Cargo.toml --bin signaling-server",
-    "build:wasm": "wasm-pack build crates/crdt-wasm --target nodejs --out-dir ../../src/wasm/crdt",
+    "build:wasm": "wasm-pack build crates/crdt-wasm --target nodejs --out-dir ../../dist/wasm/crdt",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",

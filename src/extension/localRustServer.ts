@@ -139,7 +139,7 @@ export class LocalRustServer {
         finish();
       }, 2000);
 
-      const finish = () => {
+      let finish = () => {
         if (!resolvedRef.resolved) {
           resolvedRef.resolved = true;
           clearTimeout(timeout);
@@ -151,19 +151,34 @@ export class LocalRustServer {
       child.once("close", finish);
 
       try {
-        if (process.platform === "win32") {
-          child.kill("SIGTERM");
-          setTimeout(() => {
-            if (!child.killed) {
-              child.kill("SIGKILL");
-            }
-          }, 1500);
-        } else {
-          child.kill("SIGTERM");
-        }
+        // Politely ask the child to exit.
+        child.kill("SIGTERM");
       } catch {
+        // If kill throws, resolve to avoid hanging callers.
         finish();
+        return;
       }
+
+      // If the child hasn't exited within the grace period escalate to a
+      // hard kill. We check `exitCode` rather than `killed` because on
+      // Windows `killed` may be set immediately even when the process is
+      // still running.
+      const escalate = setTimeout(() => {
+        try {
+          if (child.exitCode == null) {
+            child.kill("SIGKILL");
+          }
+        } catch {
+          // ignore
+        }
+      }, 1500);
+
+      // Ensure the escalation timer is cleared when we finish.
+      const origFinish = finish;
+      finish = () => {
+        clearTimeout(escalate);
+        origFinish();
+      };
     });
   }
 

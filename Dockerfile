@@ -30,6 +30,7 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
+        netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system app \
     && useradd  --system --gid app --create-home --home-dir /app app
