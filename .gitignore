@@ -3,5 +3,15 @@ dist/
 coverage/
 .vscode-test/
 *.vsix
-.DS_Store
 *.log
+.DS_Store
+
+# Generated WASM output (rebuilt with `npm run build:wasm`)
+src/wasm/
+
+# Rust build artefacts
+crates/target/
+target/
+
+# Legacy folder kept while OneDrive sync releases file locks; safe to remove.
+rust-workspace/target/

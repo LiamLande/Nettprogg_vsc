@@ -1,0 +1,52 @@
+# docker compose up -d              starts both servers
+# docker compose down                stops them
+# docker compose logs -f             follows logs
+#
+# The VS Code extension on the host connects to ws://localhost:7071
+# (relay) or ws://localhost:7072 (signaling) just like with the native
+# binaries. Switch the published port if those are occupied.
+
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: liveshare-lite:latest
+    container_name: liveshare-relay
+    entrypoint: ["/usr/local/bin/relay-server"]
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "7071"
+      RUST_LOG: "info"
+    ports:
+      - "7071:7071"
+    restart: unless-stopped
+    healthcheck:
+      # The relay starts accepting WebSocket connections as soon as TCP
+      # bind succeeds. A simple connect-and-close check is enough.
+      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/7071 && echo ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  signaling:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: liveshare-lite:latest
+    container_name: liveshare-signaling
+    entrypoint: ["/usr/local/bin/signaling-server"]
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "7072"
+      RUST_LOG: "info"
+    ports:
+      - "7072:7072"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/7072 && echo ok"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
