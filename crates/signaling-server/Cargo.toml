@@ -1,0 +1,30 @@
+[package]
+name = "signaling-server"
+description = "WebSocket signaling server for LiveShare Lite WebRTC peer setup."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "signaling_server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "signaling-server"
+path = "src/bin/signaling-server.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+futures-util = { workspace = true }
+protocol = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+futures-util = { workspace = true }
