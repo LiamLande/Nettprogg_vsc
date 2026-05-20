@@ -1,0 +1,39 @@
+# Keep the Docker build context lean — only the Rust workspace matters.
+
+# Node / TS extension artefacts
+node_modules
+dist
+src
+test
+package.json
+package-lock.json
+tsconfig.json
+vitest.config.ts
+.vscode
+.vscodeignore
+
+# Build outputs
+crates/target
+target
+**/target
+src/wasm
+
+# IDE and OS files
+.idea
+.git
+*.log
+.DS_Store
+
+# Documentation (not needed inside the image)
+*.md
+docs
+
+# Scripts (not needed inside the image)
+scripts
+
+# Compose / Docker auxiliary files
+docker-compose*.yml
+Dockerfile.*
+
+# Legacy folder kept on disk because OneDrive may hold file locks
+rust-workspace
