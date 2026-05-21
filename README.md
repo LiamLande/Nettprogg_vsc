@@ -21,7 +21,7 @@ TypeScript (`tsc` + `vitest`) on every push and pull request. After pushing
 this repository to GitHub, add the badge below pointing at the actual repo:
 
 ```md
-![CI](https://github.com/<owner>/<repo>/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/LiamLande/Nettprogg_vsc/actions/workflows/ci.yml/badge.svg)
 ```
 
 ## Implemented Functionality
