@@ -1,27 +1,21 @@
-//! Operation-based RGA-inspired text CRDT used by LiveShare Lite.
+//! RGA-inspired operation-based text CRDT used by LiveShare Lite.
 //!
-//! The crate is pure: it has no I/O, no networking, and no async runtime.
-//! Servers and the WebAssembly bridge depend on it and provide their own
-//! transports.
+//! The crate is pure — no I/O, no networking, no async. Servers and the
+//! WebAssembly bridge each depend on it and supply their own transports.
 //!
-//! ## Model
+//! ## Data model
 //!
-//! Each replica owns a strictly increasing counter and a stable replica id.
-//! An [`ElementId`] is the pair `(counter, replica_id)` and uniquely identifies
-//! every character ever inserted, even after deletion. Characters are stored
-//! in a tree rooted at [`ParentId::Root`]. Siblings under the same parent are
-//! ordered deterministically by descending `(counter, replica_id)` so all
-//! replicas converge to the same visible text.
+//! Every inserted character gets a globally unique [`ElementId`] composed of
+//! a stable replica id and a per-replica monotonic counter. Characters form a
+//! tree rooted at [`ParentId::Root`]; siblings under the same parent are sorted
+//! by descending `(counter, replica_id)`, giving every replica the same
+//! deterministic order.
 //!
-//! Inserts reference the previous element (or [`ParentId::Root`] for the
-//! beginning of the document). Deletes simply mark the target element as a
-//! tombstone. Duplicate operations are detected by their unique [`ElementId`]
-//! and are no-ops, which means the CRDT is idempotent under arbitrary
-//! redelivery.
-//!
-//! Operations with missing dependencies are buffered until the dependency
-//! arrives. This makes the CRDT robust against out-of-order delivery without
-//! requiring causal broadcast.
+//! Deletions set a tombstone flag rather than removing the element, so other
+//! replicas can still use the element as an insertion anchor. Duplicate
+//! operations are detected by id and ignored. Operations that reference a
+//! parent or target not yet received are buffered and applied automatically
+//! once the dependency arrives.
 
 pub mod error;
 pub mod id;

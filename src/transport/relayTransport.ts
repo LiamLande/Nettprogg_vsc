@@ -10,6 +10,13 @@ export type RelayTransportOptions = {
   handlers: TransportHandlers;
 };
 
+/**
+ * WebSocket transport that routes all operations through a central relay server.
+ *
+ * The relay server stores the full operation log, so a client that joins late
+ * receives the complete history in the `joined` message and can reconstruct
+ * the document without needing a snapshot from another peer.
+ */
 export class RelayTransport implements CollaborationTransport {
   private socket?: WebSocket;
   private disposed = false;

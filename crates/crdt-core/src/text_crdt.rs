@@ -16,37 +16,25 @@ struct CharElement {
     deleted: bool,
 }
 
-/// Operation-based RGA-inspired text CRDT.
+/// RGA-inspired text CRDT.
 ///
-/// ## Algorithm
+/// Each inserted character becomes a tree node with a unique [`ElementId`].
+/// Nodes reference their left neighbour as a parent; siblings under the same
+/// parent are sorted by descending `(counter, replica_id)` so concurrent
+/// inserts at the same position always resolve to the same order on every
+/// replica. Deletions tombstone a node rather than removing it.
 ///
-/// Every character ever inserted gets a globally unique [`ElementId`] made of
-/// the producing replica's id and a per-replica monotonic counter. Inserts
-/// reference the element immediately to their left as a parent
-/// ([`ParentId::Root`] for the start of the document). Deletes flip a
-/// tombstone flag on the target element.
+/// Duplicate operations are silently dropped. Operations whose parent or
+/// target has not yet arrived are buffered and applied automatically once
+/// the dependency is received.
 ///
-/// Siblings under the same parent are ordered deterministically by descending
-/// `(counter, replica_id)`. The visible document is the in-order DFS through
-/// non-deleted elements.
+/// ## Index units
 ///
-/// The CRDT is robust against:
-///
-/// * **duplicate delivery** — the operation id set deduplicates,
-/// * **out-of-order delivery** — operations with missing dependencies are
-///   buffered and drained transitively when a missing parent / target
-///   arrives,
-/// * **delayed delivery** — replicas converge once they have seen the same
-///   set of operations regardless of arrival order.
-///
-/// ## Indexing
-///
-/// `insert(index, text)` and `delete(index, count)` treat `index`/`count`
-/// as positions in the visible document, expressed in Unicode scalar values
-/// (Rust `char`s). For ASCII / Basic Multilingual Plane content this matches
-/// the UTF-16 indices VS Code reports. Non-BMP characters (e.g. emoji) are
-/// stored as one element but reported by VS Code as two UTF-16 code units;
-/// the extension currently treats this as a known limitation.
+/// [`insert`](TextCrdt::insert) and [`delete`](TextCrdt::delete) count
+/// positions in Unicode scalar values (`char`). For ASCII and Basic
+/// Multilingual Plane text this matches the UTF-16 offsets VS Code reports.
+/// Non-BMP characters (emoji, etc.) occupy two UTF-16 code units but one
+/// `char`, which is a known limitation.
 #[derive(Debug, Clone)]
 pub struct TextCrdt {
     replica_id: String,
@@ -83,19 +71,20 @@ impl TextCrdt {
         self.counter
     }
 
-    /// Reserve the next [`ElementId`] for this replica.
+    /// Allocates and returns the next [`ElementId`] for this replica.
     pub fn next_operation_id(&mut self) -> ElementId {
         self.counter += 1;
         ElementId::new(self.counter, self.replica_id.clone())
     }
 
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Local edits
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
-    /// Produce one [`InsertOp`] per character in `text`, anchored to the
-    /// visible element immediately to the left of `index`. Each operation is
-    /// applied locally as part of the call.
+    /// Inserts `text` at visible position `index`.
+    ///
+    /// Returns one [`InsertOp`] per character, each anchored to its left
+    /// neighbour. All operations are applied to the local replica immediately.
     pub fn insert(&mut self, index: usize, text: &str) -> Result<Vec<InsertOp>, ApplyError> {
         let visible = self.visible_elements();
         if index > visible.len() {
@@ -127,8 +116,9 @@ impl TextCrdt {
         Ok(ops)
     }
 
-    /// Mark `count` consecutive visible characters starting at `index` as
-    /// tombstones, returning one [`DeleteOp`] per removed character.
+    /// Tombstones `count` consecutive visible characters starting at `index`.
+    ///
+    /// Returns one [`DeleteOp`] per character.
     pub fn delete(&mut self, index: usize, count: usize) -> Result<Vec<DeleteOp>, ApplyError> {
         let visible = self.visible_elements();
         let length = visible.len();
@@ -151,20 +141,22 @@ impl TextCrdt {
         Ok(ops)
     }
 
-    // ---------------------------------------------------------------------
-    // Remote / replayed operations
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // Remote operations
+    // -------------------------------------------------------------------------
 
-    /// Apply an operation that arrived from another replica (or that was
-    /// just produced locally). Idempotent: duplicates are silently skipped.
+    /// Applies a remote operation to this replica.
+    ///
+    /// Idempotent — duplicate operations are detected by id and skipped.
+    /// Operations whose dependency is not yet present are buffered and applied
+    /// automatically when that dependency arrives.
     pub fn apply_operation(&mut self, operation: &Operation) -> ApplyResult {
         let op_key = operation.op_id().key();
         if self.seen_op_ids.contains(&op_key) {
             return ApplyResult::new(ApplyStatus::Duplicate, op_key, 0);
         }
 
-        // Mark as seen up front so out-of-order duplicates of this same
-        // operation cannot retrigger queuing.
+        // Mark seen before queuing so a redelivery of the same op is dropped.
         self.seen_op_ids.insert(op_key.clone());
 
         match operation {
@@ -189,7 +181,7 @@ impl TextCrdt {
         }
     }
 
-    /// Returns true if `operation` was already observed by this replica.
+    /// Returns `true` if `operation` has already been applied or buffered.
     pub fn has_seen(&self, operation: &Operation) -> bool {
         self.seen_op_ids.contains(&operation.op_id().key())
     }
@@ -198,11 +190,11 @@ impl TextCrdt {
         self.pending_inserts.len() + self.pending_deletes.len()
     }
 
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Read-only views
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
-    /// The visible text as a `String`.
+    /// Returns the current visible document as a `String`.
     pub fn to_text(&self) -> String {
         self.visible_elements()
             .into_iter()
@@ -218,7 +210,7 @@ impl TextCrdt {
         self.visible_elements().into_iter().nth(index).map(|c| c.id)
     }
 
-    /// Diagnostic representation matching the TypeScript `debugState()` shape.
+    /// Full internal state for diagnostics (used by the extension's debug command).
     pub fn debug_state(&self) -> DebugState {
         let snapshot = self.snapshot();
         DebugState {
@@ -232,10 +224,11 @@ impl TextCrdt {
         }
     }
 
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Snapshot support
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
+    /// Serialises the full replica state into a [`TextCrdtSnapshot`].
     pub fn snapshot(&self) -> TextCrdtSnapshot {
         let mut elements: Vec<CharSnapshot> = self
             .elements
@@ -268,9 +261,10 @@ impl TextCrdt {
         }
     }
 
-    /// Construct a CRDT from a snapshot. The new replica adopts `replica_id`
-    /// as its own identity for future operations while preserving every
-    /// element already observed.
+    /// Reconstructs a CRDT from a snapshot.
+    ///
+    /// The resulting replica uses `replica_id` for future operations and
+    /// inherits all elements and operation history from `snapshot`.
     pub fn from_snapshot(snapshot: &TextCrdtSnapshot, replica_id: impl Into<String>) -> Self {
         let replica_id = replica_id.into();
         let mut crdt = TextCrdt::new(replica_id.clone());
@@ -304,9 +298,9 @@ impl TextCrdt {
         crdt
     }
 
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Internal helpers
-    // ---------------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
     fn record_seen(&mut self, op_id: &ElementId) {
         self.seen_op_ids.insert(op_id.key());

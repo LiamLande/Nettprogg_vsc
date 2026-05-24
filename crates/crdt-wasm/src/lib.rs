@@ -1,9 +1,7 @@
-//! WebAssembly bindings around [`crdt_core::TextCrdt`].
+//! WebAssembly bindings for [`crdt_core::TextCrdt`].
 //!
-//! Operations cross the JS/WASM boundary as plain JSON-compatible objects so
-//! the wire format is exactly the same as the JSON the Rust relay server
-//! sees. This means the same operation can flow JS → WASM → relay (Rust) →
-//! WASM → JS without any reshaping in the middle.
+//! Operations cross the JS/WASM boundary as JSON-compatible objects, keeping
+//! the wire format identical to what the Rust relay server expects.
 
 use crdt_core::{ApplyStatus, Operation, TextCrdt, TextCrdtSnapshot};
 use serde_wasm_bindgen::{from_value, to_value};
@@ -15,7 +13,7 @@ pub fn _start() {
     console_error_panic_hook::set_once();
 }
 
-/// JS-facing wrapper around [`crdt_core::TextCrdt`].
+/// JavaScript-facing wrapper around [`crdt_core::TextCrdt`].
 #[wasm_bindgen(js_name = TextCrdt)]
 pub struct WasmTextCrdt {
     inner: TextCrdt,
@@ -31,8 +29,7 @@ impl WasmTextCrdt {
         }
     }
 
-    /// Re-hydrate a CRDT from a snapshot. The new replica adopts
-    /// `replica_id` as its identity for future operations.
+    /// Reconstructs a CRDT from a snapshot, adopting `replica_id` for future operations.
     #[wasm_bindgen(js_name = fromSnapshot)]
     pub fn from_snapshot(snapshot: JsValue, replica_id: &str) -> Result<WasmTextCrdt, JsError> {
         let snapshot: TextCrdtSnapshot = from_value(snapshot).map_err(into_js_error)?;
@@ -41,45 +38,45 @@ impl WasmTextCrdt {
         })
     }
 
-    /// Get the current replica id.
+    /// Returns this replica's id string.
     #[wasm_bindgen(js_name = getReplicaId)]
     pub fn replica_id(&self) -> String {
         self.inner.replica_id().to_string()
     }
 
-    /// Returns the current visible text.
+    /// Returns the current visible document text.
     #[wasm_bindgen(js_name = toString)]
     pub fn to_text(&self) -> String {
         self.inner.to_text()
     }
 
-    /// Returns the number of buffered (out-of-order) operations.
+    /// Number of operations buffered pending their dependency.
     #[wasm_bindgen(js_name = pendingCount)]
     pub fn pending_count(&self) -> usize {
         self.inner.pending_count()
     }
 
-    /// Length of the visible document in characters.
+    /// Visible document length in Unicode scalar values.
     #[wasm_bindgen(js_name = visibleLength)]
     pub fn visible_length(&self) -> usize {
         self.inner.visible_length()
     }
 
-    /// Insert `text` at `index`. Returns an array of insert operations.
+    /// Inserts `text` at visible position `index`. Returns an array of insert operations.
     pub fn insert(&mut self, index: usize, text: &str) -> Result<JsValue, JsError> {
         let ops = self.inner.insert(index, text).map_err(into_js_error)?;
         let wrapped: Vec<Operation> = ops.into_iter().map(Operation::Insert).collect();
         to_value(&wrapped).map_err(into_js_error)
     }
 
-    /// Delete `count` consecutive visible characters starting at `index`.
+    /// Tombstones `count` consecutive visible characters starting at `index`. Returns delete operations.
     pub fn delete(&mut self, index: usize, count: usize) -> Result<JsValue, JsError> {
         let ops = self.inner.delete(index, count).map_err(into_js_error)?;
         let wrapped: Vec<Operation> = ops.into_iter().map(Operation::Delete).collect();
         to_value(&wrapped).map_err(into_js_error)
     }
 
-    /// Apply a remote operation. Returns `{ status, opId, drained }`.
+    /// Applies a remote operation. Returns `{ status, opId, drained }`.
     #[wasm_bindgen(js_name = applyOperation)]
     pub fn apply_operation(&mut self, operation: JsValue) -> Result<JsValue, JsError> {
         let op: Operation = from_value(operation).map_err(into_js_error)?;
@@ -96,20 +93,19 @@ impl WasmTextCrdt {
         to_value(&payload).map_err(into_js_error)
     }
 
-    /// Returns true if `operation` was already observed by this replica.
+    /// Returns `true` if `operation` has already been applied or buffered.
     #[wasm_bindgen(js_name = hasSeen)]
     pub fn has_seen(&self, operation: JsValue) -> Result<bool, JsError> {
         let op: Operation = from_value(operation).map_err(into_js_error)?;
         Ok(self.inner.has_seen(&op))
     }
 
-    /// Serialise the full state into a JS-friendly snapshot.
+    /// Serialises the full replica state into a JS-compatible snapshot object.
     pub fn snapshot(&self) -> Result<JsValue, JsError> {
         to_value(&self.inner.snapshot()).map_err(into_js_error)
     }
 
-    /// Diagnostic view of the CRDT, used by the extension's "Show Debug
-    /// State" command.
+    /// Returns the full internal CRDT state for the extension's debug command.
     #[wasm_bindgen(js_name = debugState)]
     pub fn debug_state(&self) -> Result<JsValue, JsError> {
         to_value(&self.inner.debug_state()).map_err(into_js_error)

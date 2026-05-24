@@ -7,11 +7,9 @@ use serde::{Deserialize, Serialize};
 
 /// Globally unique identifier for a CRDT element.
 ///
-/// `replica_id` is the stable identifier of the replica that produced the
-/// element. `counter` is that replica's monotonically increasing per-element
-/// counter. The pair is unique forever; ids are never reused.
-///
-/// Serialisation matches the TypeScript wire format `{ counter, replicaId }`.
+/// Composed of a stable [`replica_id`](ElementId::replica_id) and a
+/// per-replica monotonic [`counter`](ElementId::counter). The pair is
+/// never reused, even after deletion.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ElementId {
@@ -27,7 +25,7 @@ impl ElementId {
         }
     }
 
-    /// Canonical string key used in hash maps that need a single owned value.
+    /// String key used as a `HashMap` key: `"<replica_id>:<counter>"`.
     pub fn key(&self) -> String {
         format!("{}:{}", self.replica_id, self.counter)
     }
@@ -40,7 +38,6 @@ impl fmt::Display for ElementId {
 }
 
 impl Ord for ElementId {
-    /// Ascending order: first by counter, then by replica id (lexicographic).
     fn cmp(&self, other: &Self) -> Ordering {
         self.counter
             .cmp(&other.counter)
@@ -54,10 +51,10 @@ impl PartialOrd for ElementId {
     }
 }
 
-/// Reference to either the synthetic root of the document or a concrete element.
+/// Insertion anchor: either the document root or a specific element.
 ///
-/// Insert operations point at the parent immediately to the left of the new
-/// character. The first character of the document points at [`ParentId::Root`].
+/// Every [`InsertOp`](crate::InsertOp) names its left neighbour as a
+/// `ParentId`. The first character of a document uses [`ParentId::Root`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ParentId {
     Root,
@@ -83,8 +80,6 @@ impl From<ElementId> for ParentId {
     }
 }
 
-/// Serialise as the JSON literal `"ROOT"` or as the embedded element object
-/// so the format matches the TypeScript implementation byte-for-byte.
 impl Serialize for ParentId {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
@@ -142,8 +137,10 @@ impl<'de> Visitor<'de> for ParentIdVisitor {
     }
 }
 
-/// Descending sibling ordering. The youngest (highest counter, then highest
-/// replica id) sibling comes first, just like the TypeScript implementation.
+/// Comparator that places the highest `(counter, replica_id)` first.
+///
+/// Used to sort siblings under a shared parent so every replica produces the
+/// same deterministic order for concurrent inserts at the same position.
 pub fn compare_element_id_descending(left: &ElementId, right: &ElementId) -> Ordering {
     right.cmp(left)
 }

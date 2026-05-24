@@ -2,20 +2,28 @@ export type ReplicaId = string;
 
 export type RootId = "ROOT";
 
+/** Globally unique identifier for a CRDT element: `(counter, replicaId)`. */
 export type ElementId = {
   counter: number;
   replicaId: ReplicaId;
 };
 
+/**
+ * Insertion anchor — either the document root or the element immediately to
+ * the left of the new character.
+ */
 export type ParentId = ElementId | RootId;
 
+/** A single character node in the CRDT tree. */
 export type CharElement = {
   id: ElementId;
   value: string;
   parentId: ParentId;
+  /** `true` once this element has been logically deleted (tombstone). */
   deleted: boolean;
 };
 
+/** Inserts a single character to the right of `parentId`. */
 export type InsertOp = {
   type: "insert";
   opId: ElementId;
@@ -23,6 +31,7 @@ export type InsertOp = {
   value: string;
 };
 
+/** Tombstones the element identified by `targetId`. */
 export type DeleteOp = {
   type: "delete";
   opId: ElementId;
@@ -31,18 +40,22 @@ export type DeleteOp = {
 
 export type CrdtOperation = InsertOp | DeleteOp;
 
+/** Result returned by {@link TextCrdt.applyOperation}. */
 export type ApplyResult =
   | {
+      /** The operation was applied; `drained` pending operations also became ready. */
       status: "applied";
       opId: string;
       drained: number;
     }
   | {
+      /** The operation was already known; no state changed. */
       status: "duplicate";
       opId: string;
       drained: 0;
     }
   | {
+      /** The operation's dependency is missing; it was buffered for later. */
       status: "queued";
       opId: string;
       drained: 0;

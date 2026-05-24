@@ -1,16 +1,8 @@
 /**
- * Thin TypeScript shim around the Rust CRDT compiled to WebAssembly.
+ * TypeScript shim around the Rust CRDT compiled to WebAssembly.
  *
- * All CRDT logic lives in the Rust crate `crates/crdt-core`. This file only
- * loads the WASM module (built with `npm run build:wasm`) and exposes a
- * synchronous, class-based API that mirrors the previous TypeScript
- * implementation so the rest of the VS Code extension does not need to
- * change.
- *
- * The wire format produced and consumed by the WASM CRDT is byte-for-byte
- * identical to what the Rust relay server understands, so JSON operations
- * flow through `extension → WASM → relay → WASM → extension` without any
- * reshaping.
+ * All CRDT logic lives in `crates/crdt-core`. Build the module with
+ * `npm run build:wasm` before running the extension.
  */
 import { CrdtOperation, DeleteOp, ElementId, InsertOp, ParentId } from "./types";
 import { isOperation } from "./serializer";
@@ -99,10 +91,10 @@ function loadWasmModule(): WasmModule {
 }
 
 /**
- * Synchronous TypeScript wrapper around the Rust + WASM CRDT.
+ * Synchronous wrapper around the Rust + WASM CRDT.
  *
- * Construction loads the WASM module eagerly, so a misconfigured build
- * fails fast rather than the next time an edit happens.
+ * The WASM module is loaded eagerly on construction so a missing build fails
+ * immediately rather than on the first edit.
  */
 export class TextCrdt {
   private inner!: WasmTextCrdtInstance;
@@ -112,7 +104,7 @@ export class TextCrdt {
     this.inner = new mod.TextCrdt(replicaId);
   }
 
-  /** Re-hydrate from a snapshot, adopting `replicaId` as the new identity. */
+  /** Reconstructs a CRDT from a snapshot, adopting `replicaId` for future operations. */
   static fromSnapshot(snapshot: TextCrdtSnapshot, replicaId: string): TextCrdt {
     const mod = loadWasmModule();
     const instance = Object.create(TextCrdt.prototype) as TextCrdt;
@@ -121,6 +113,10 @@ export class TextCrdt {
     return instance;
   }
 
+  /**
+   * Inserts `text` at visible position `index`.
+   * Returns one {@link InsertOp} per character; all are applied locally immediately.
+   */
   insert(index: number, text: string): InsertOp[] {
     if (text.length === 0) {
       return [];
@@ -134,6 +130,10 @@ export class TextCrdt {
     });
   }
 
+  /**
+   * Tombstones `count` consecutive visible characters starting at `index`.
+   * Returns one {@link DeleteOp} per character.
+   */
   delete(index: number, count = 1): DeleteOp[] {
     if (count <= 0) {
       return [];
@@ -147,34 +147,45 @@ export class TextCrdt {
     });
   }
 
+  /**
+   * Applies a remote operation to this replica.
+   * Idempotent — duplicate operations are silently ignored.
+   */
   applyOperation(op: CrdtOperation): ApplyResult {
     return this.inner.applyOperation(op);
   }
 
+  /** Returns `true` if `op` has already been applied or buffered. */
   hasSeen(op: CrdtOperation): boolean {
     return this.inner.hasSeen(op);
   }
 
+  /** Serialises the full replica state for transfer to a joining peer. */
   snapshot(): TextCrdtSnapshot {
     return this.inner.snapshot();
   }
 
+  /** Full internal state for the extension's debug command. */
   debugState(): unknown {
     return this.inner.debugState();
   }
 
+  /** Current visible document text. */
   toString(): string {
     return this.inner.toString();
   }
 
+  /** Visible document length in Unicode scalar values. */
   visibleLength(): number {
     return this.inner.visibleLength();
   }
 
+  /** Number of operations buffered pending their dependency. */
   pendingCount(): number {
     return this.inner.pendingCount();
   }
 
+  /** This replica's id string. */
   getReplicaId(): string {
     return this.inner.getReplicaId();
   }

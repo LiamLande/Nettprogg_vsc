@@ -8,6 +8,12 @@ export type TextDocumentContentChangeLike = {
   text: string;
 };
 
+/**
+ * Translates VS Code content-change events into CRDT operations.
+ *
+ * Changes are processed in reverse offset order so earlier deletions do not
+ * shift the indices of later ones.
+ */
 export function changesToOperations(
   changes: readonly TextDocumentContentChangeLike[],
   crdt: TextCrdt
@@ -28,6 +34,12 @@ export function changesToOperations(
   return operations;
 }
 
+/**
+ * Applies VS Code content-change events to a plain string.
+ *
+ * Used to keep `documentShadowText` in sync with the editor without going
+ * through the CRDT, so the extension can detect spurious re-renders.
+ */
 export function applyTextChanges(text: string, changes: readonly TextDocumentContentChangeLike[]): string {
   let nextText = text;
   const sorted = [...changes].sort((a, b) => b.rangeOffset - a.rangeOffset);
@@ -45,6 +57,10 @@ export function applyTextChanges(text: string, changes: readonly TextDocumentCon
   return nextText;
 }
 
+/**
+ * Replaces the entire content of `document` with `text` via a workspace edit.
+ * Returns `false` if VS Code rejected the edit.
+ */
 export async function replaceDocumentText(
   vscodeApi: typeof vscode,
   document: vscode.TextDocument,

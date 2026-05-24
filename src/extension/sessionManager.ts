@@ -24,6 +24,13 @@ type SessionConfig = {
   seedText: string;
 };
 
+/**
+ * Central controller for a LiveShare Lite collaboration session.
+ *
+ * Owns the {@link TextCrdt}, the active {@link CollaborationTransport}, and
+ * the optional local Rust server. Exactly one session can be active at a time;
+ * starting or joining a new session implicitly leaves any existing one.
+ */
 export class SessionManager implements vscode.Disposable {
   private readonly clientId = `${os.hostname()}-${crypto.randomUUID().slice(0, 8)}`;
   private readonly statusBar = new StatusBarController();
@@ -56,10 +63,12 @@ export class SessionManager implements vscode.Disposable {
     this.context.subscriptions.push(this);
   }
 
+  /** Starts a local Rust relay server and shows the port in a notification. */
   async startServer(): Promise<void> {
     await this.startLocalRustServer("relay");
   }
 
+  /** Starts a local Rust WebRTC signaling server and shows the port in a notification. */
   async startSignalingServer(): Promise<void> {
     await this.startLocalRustServer("signaling");
   }
@@ -116,6 +125,7 @@ export class SessionManager implements vscode.Disposable {
     }
   }
 
+  /** Prompts for a room ID and server URL, then starts a new collaboration session. */
   async startSession(): Promise<void> {
     const editor = await this.requireActiveEditor();
     if (!editor) {
@@ -142,6 +152,7 @@ export class SessionManager implements vscode.Disposable {
     });
   }
 
+  /** Prompts for a room ID and server URL, then joins an existing session. */
   async joinSession(): Promise<void> {
     const editor = await this.requireActiveEditor();
     if (!editor) {
@@ -168,6 +179,7 @@ export class SessionManager implements vscode.Disposable {
     });
   }
 
+  /** Tears down the active session and transport, optionally notifying the user. */
   async leaveSession(showMessage = true): Promise<void> {
     this.clearReconnectTimer();
     this.sessionVersion += 1;
@@ -200,6 +212,7 @@ export class SessionManager implements vscode.Disposable {
     }
   }
 
+  /** Leaves the session and stops the local server, ignoring any errors. */
   async forceShutdown(): Promise<void> {
     this.output.appendLine("Force shutdown requested.");
     await this.leaveSession(false);
@@ -222,6 +235,7 @@ export class SessionManager implements vscode.Disposable {
     vscode.window.showInformationMessage("LiveShare Lite force shutdown complete.");
   }
 
+  /** Dumps the full CRDT and transport state to the output channel. */
   showDebugState(): void {
     this.output.show();
     this.output.appendLine("=== LiveShare Lite Debug State ===");
@@ -248,6 +262,7 @@ export class SessionManager implements vscode.Disposable {
     );
   }
 
+  /** Runs a self-contained CRDT convergence demo and prints the result to the output channel. */
   async runLocalDemo(): Promise<void> {
     const a = new TextCrdt("A");
     const b = new TextCrdt("B");
