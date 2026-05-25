@@ -17,7 +17,7 @@ because the VS Code extension API only runs inside the Node.js extension host.
 ## Continuous Integration
 
 GitHub Actions runs both Rust (`cargo fmt`, `cargo clippy`, `cargo test`) and
-TypeScript (`tsc` + `vitest`) on every push and pull request:
+TypeScript (`tsc` + `vitest`) on every push and pull request: _
 
 [CI](https://github.com/LiamLande/Nettprogg_vsc/actions/workflows/ci.yml/badge.svg)
 
