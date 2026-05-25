@@ -6,7 +6,11 @@ fn apply_action(replica: &mut TextCrdt, action: &Action) -> Vec<Operation> {
     let len = replica.visible_length();
     match action.kind {
         ActionKind::Insert => {
-            let index = if len == 0 { 0 } else { action.index % (len + 1) };
+            let index = if len == 0 {
+                0
+            } else {
+                action.index % (len + 1)
+            };
             replica
                 .insert(index, &action.value)
                 .unwrap_or_default()
