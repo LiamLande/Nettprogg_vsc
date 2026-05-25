@@ -215,37 +215,60 @@ ports are taken.
 
 ## Usage
 
+All LiveShare Lite commands are available in the VS Code command palette
+(`Ctrl+Shift+P` / `Cmd+Shift+P`). Search for `LiveShare Lite` to see the full
+list.
+
+### Installing the extension
+
+1. Build the workspace once:
+   ```bash
+   npm install && npm run rust:release && npm run build:wasm && npm run compile
+   ```
+2. Open the command palette and run **Developer: Install Extension from Location…**
+3. Select the root of this repository (the folder containing `package.json`).
+4. VS Code installs LiveShare Lite and asks to reload — click **Reload**.
+
+Repeat on every VS Code window that should participate in a session. Each window
+needs the extension installed separately.
+
 ### Quick start (one machine, two windows)
 
-1. Build the workspace once: `npm install && npm run rust:release && npm run build:wasm && npm run compile`.
-2. Open the project in VS Code and press `F5`. An Extension Development Host
-   window appears with LiveShare Lite installed.
-3. In the dev host, run `LiveShare Lite: Start Server` and confirm port 7071.
-   The relay binary launches as a background child process.
-4. Run `LiveShare Lite: Start Session`. Accept the random room id (or type one).
-5. Open a second VS Code window on the same machine and press `F5` again to
-   open another Extension Development Host.
-6. In the second host, run `LiveShare Lite: Join Session` and type the same
-   room id.
-7. Open or create a text file in both windows and start typing. Edits propagate
-   live; presence is shown in the status bar.
+1. In the **first** window, open the command palette and run
+   **LiveShare Lite: Start Server**. Accept the default port (7071). The relay
+   binary starts as a background process and a status-bar indicator appears.
+2. Run **LiveShare Lite: Start Session**. Accept the generated room id or type
+   your own, then confirm the relay URL (`ws://127.0.0.1:7071`).
+3. In the **second** window, open the command palette and run
+   **LiveShare Lite: Join Session**. Enter the same room id and relay URL.
+4. Open or create a text file in both windows and start typing. Edits propagate
+   live; the peer count is shown in the status bar.
+
+> **Note.** The relay server only needs to be started once — if you see
+> "Address already in use", a server from a previous session is still running.
+> You can skip straight to **Start Session** / **Join Session**.
 
 ### Two machines
 
-1. Build everything on both machines (or copy the `crates/target/release/`
-   binary plus `dist/` and `src/wasm/`).
-2. On the host machine, run `LiveShare Lite: Start Server` (or
-   `npm run rust:start:relay` in a separate terminal) and note the host's IP.
-3. Open the firewall on port 7071.
-4. On the guest machine, run `LiveShare Lite: Join Session` and enter
-   `ws://<host-ip>:7071` as the relay URL.
+1. Build the workspace on both machines (or copy `crates/target/release/`,
+   `dist/`, and `src/wasm/` to the second machine).
+2. Install the extension on both machines using **Developer: Install Extension
+   from Location…** as described above.
+3. On the **host** machine, run **LiveShare Lite: Start Server** and note the
+   machine's IP address.
+4. Open port 7071 in the host firewall.
+5. On the **guest** machine, run **LiveShare Lite: Join Session** and enter the
+   host's address as the relay URL: `ws://<host-ip>:7071`.
 
-### WebRTC mode
+### WebRTC (peer-to-peer) mode
 
 1. Set `liveshareLite.transportMode` to `p2p` in VS Code settings.
-2. Run `LiveShare Lite: Start Signaling Server` on one machine.
-3. Start / join the session using the same signaling URL. The signaling server
-   only forwards offers/answers and never sees document operations.
+2. On one machine, run **LiveShare Lite: Start Signaling Server** (default port
+   7072). The signaling server only exchanges WebRTC connection details and
+   never sees document content.
+3. Both machines run **Start Session** / **Join Session** using the signaling
+   URL (`ws://127.0.0.1:7072` or `ws://<host-ip>:7072`). Operations flow
+   directly between peers once the connection is established.
 
 ## Running Tests
 
