@@ -229,8 +229,7 @@ list.
 3. Select the root of this repository (the folder containing `package.json`).
 4. VS Code installs LiveShare Lite and asks to reload — click **Reload**.
 
-Repeat on every VS Code window that should participate in a session. Each window
-needs the extension installed separately.
+Every VS Code window needs to join the session to be able to participate and see changes. 
 
 ### Quick start (one machine, two windows)
 
