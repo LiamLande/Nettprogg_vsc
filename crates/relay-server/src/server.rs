@@ -146,9 +146,7 @@ async fn handle_connection(stream: TcpStream, rooms: SharedRooms) -> anyhow::Res
                 client_id,
                 op,
             } => {
-                if joined_room.as_ref()
-                    != Some(&(room_id.clone(), client_id.clone()))
-                {
+                if joined_room.as_ref() != Some(&(room_id.clone(), client_id.clone())) {
                     let _ = tx_outbound.send(ServerMessage::Error {
                         message: "client must join the room before sending operations".into(),
                     });

@@ -7,9 +7,24 @@ fn three_replicas_converge_with_out_of_order_delivery() {
     let mut c = TextCrdt::new("C");
 
     let mut ops: Vec<Operation> = Vec::new();
-    ops.extend(a.insert(0, "ab").unwrap().into_iter().map(Operation::Insert));
-    ops.extend(b.insert(0, "xy").unwrap().into_iter().map(Operation::Insert));
-    ops.extend(c.insert(0, "12").unwrap().into_iter().map(Operation::Insert));
+    ops.extend(
+        a.insert(0, "ab")
+            .unwrap()
+            .into_iter()
+            .map(Operation::Insert),
+    );
+    ops.extend(
+        b.insert(0, "xy")
+            .unwrap()
+            .into_iter()
+            .map(Operation::Insert),
+    );
+    ops.extend(
+        c.insert(0, "12")
+            .unwrap()
+            .into_iter()
+            .map(Operation::Insert),
+    );
 
     for op in ops.iter().rev() {
         a.apply_operation(op);

@@ -393,7 +393,13 @@ impl TextCrdt {
         let entries: Vec<(String, ElementId, ParentId)> = self
             .elements
             .values()
-            .map(|element| (element.id.key(), element.id.clone(), element.parent_id.clone()))
+            .map(|element| {
+                (
+                    element.id.key(),
+                    element.id.clone(),
+                    element.parent_id.clone(),
+                )
+            })
             .collect();
 
         for (own_key, id, parent_id) in entries {

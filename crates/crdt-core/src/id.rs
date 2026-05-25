@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn descending_order_puts_high_counter_first() {
-        let mut ids = vec![
+        let mut ids = [
             ElementId::new(1, "B"),
             ElementId::new(2, "A"),
             ElementId::new(1, "A"),

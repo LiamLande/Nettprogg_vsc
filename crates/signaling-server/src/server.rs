@@ -170,9 +170,7 @@ async fn handle_connection(stream: TcpStream, rooms: SharedRooms) -> anyhow::Res
                     };
                     if !room.send_to(&target_client_id, &payload) {
                         let _ = tx_outbound.send(SignalingServerMessage::Error {
-                            message: format!(
-                                "target peer {target_client_id} is not connected"
-                            ),
+                            message: format!("target peer {target_client_id} is not connected"),
                         });
                     }
                 }

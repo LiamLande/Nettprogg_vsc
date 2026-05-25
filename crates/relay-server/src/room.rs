@@ -52,7 +52,11 @@ impl Room {
     ///
     /// Comparing senders prevents a re-joining peer from being kicked off by
     /// the close handler of the previous (already-replaced) connection.
-    pub fn remove_peer(&mut self, client_id: &str, sender: &UnboundedSender<ServerMessage>) -> bool {
+    pub fn remove_peer(
+        &mut self,
+        client_id: &str,
+        sender: &UnboundedSender<ServerMessage>,
+    ) -> bool {
         let same = self
             .peers
             .get(client_id)
@@ -107,7 +111,11 @@ impl Room {
 
     /// Check whether `sender` refers to the currently registered connection
     /// for `client_id`.
-    pub fn is_active_sender(&self, client_id: &str, sender: &UnboundedSender<ServerMessage>) -> bool {
+    pub fn is_active_sender(
+        &self,
+        client_id: &str,
+        sender: &UnboundedSender<ServerMessage>,
+    ) -> bool {
         self.peers
             .get(client_id)
             .map(|peer| peer.sender.same_channel(sender))
